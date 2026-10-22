@@ -12,39 +12,90 @@ app.use(express.urlencoded({ extended: true }));
 
 const conexao = abrirConexao();
 
+function formatarDataParaBD(dataStr) {
+  if (!dataStr) return null;
+  if (dataStr.includes("-")) return dataStr; // Já está em YYYY-MM-DD
+
+  const [dia, mes, ano] = dataStr.split("/");
+  return `${ano}-${mes}-${dia}`;
+}
+
 app.get("/", (req, res) => {
   res.sendFile("index.html", { root: "./public" });
 });
 
-app.get("/livros", async (req, res) => {
+// GET - Listar todas as tarefas
+app.get("/tarefas", async (req, res) => {
   try {
-    const sql = "SELECT * FROM livro";
+    const sql = "SELECT * FROM tarefas";
     const resp = await conexao.query(sql);
     res.json(resp);
   } catch (err) {
     console.log(err);
-    res.status(500).json({ erro: "Erro ao buscar livros" });
+    res.status(500).json({ erro: "Erro ao buscar as tarefas" });
   }
 });
 
-app.post("/cadastro", async (req, res) => {
-  const { titulo, descricao, autor } = req.body;
+// GET - Listar por Periodo
+app.get("/tarefas/periodo", async (req, res) => {
+  try {
+    const sql = "SELECT * FROM tarefas ORDER BY data_tarefa ASC"; //ASC - Garante a ordem cronologica da menso recente até a masi recente
+    const resp = await conexao.query(sql);
 
-  if (!titulo || !descricao || !autor) {
-    return res.status(400).json({ erro: "Todos os campos do livro são obrigatórios" });
+    res.json(resp);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ erro: "Erro ao buscar as tarefas" });
   }
+});
+
+// GET - Listar tarefa por id
+app.get("/tarefas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const sql = "SELECT * FROM tarefas WHERE id_tarefa = ?";
+    const resp = await conexao.query(sql, [id]);
+
+    if (resp.length === 0) {
+      return res.status(404).json({ erro: "Tarefa não encontrada" });
+    }
+    res.json(resp[0]);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ erro: "Erro ao buscar as tarefas" });
+  }
+});
+
+// POST - Cadastrar tarefa
+app.post("/cadastro", async (req, res) => {
+  const { nome, descricao, responsavel, data_tarefa, tarefa_concluida } =
+    req.body;
+
+  if (
+    !nome ||
+    !descricao ||
+    !responsavel ||
+    !data_tarefa ||
+    tarefa_concluida === undefined
+  ) {
+    return res
+      .status(400)
+      .json({ erro: "Todos os campos da tarefa são obrigatórios" });
+  }
+
+  const dataFormatada = formatarDataParaBD(data_tarefa);
 
   let com;
   try {
-    com = await conexao.getConnection(); 
-    
-    const [result] = await com.query(
-      "INSERT INTO livro (titulo, descricao, autor) VALUES (?, ?, ?)",
-      [titulo, descricao, autor],
+    com = await conexao.getConnection();
+
+    const result = await com.query(
+      "INSERT INTO tarefas (nome, descricao, responsavel, data_tarefa, tarefa_concluida) VALUES (?, ?, ?, ?, ?)",
+      [nome, descricao, responsavel, dataFormatada, tarefa_concluida],
     );
-    
+
     res.status(201).json({
-      mensagem: "Livro adicionado com sucesso!",
+      mensagem: "Tarefa adicionada com sucesso!",
       id_inserido: Number(result.insertId),
     });
   } catch (err) {
@@ -55,18 +106,29 @@ app.post("/cadastro", async (req, res) => {
   }
 });
 
-app.put("/livro/:id", async (req, res) => {
+// PUT - Atualizar tarefa por ID
+app.put("/tarefa/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { titulo, descricao, autor } = req.body;
-  
-  const sql = "UPDATE livro SET titulo = ?, descricao = ?, autor = ? WHERE id_livro = ?";
-  
+  const { nome, descricao, responsavel, data_tarefa, tarefa_concluida } =
+    req.body;
+  const dataFormatada = formatarDataParaBD(data_tarefa);
+
+  const sql =
+    "UPDATE tarefas SET nome = ?, descricao = ?, responsavel = ?, data_tarefa = ?, tarefa_concluida = ? WHERE id_tarefa = ?";
+
   try {
-    const resp= await conexao.query(sql, [titulo, descricao, autor, id]);
+    const resp = await conexao.query(sql, [
+      nome,
+      descricao,
+      responsavel,
+      dataFormatada,
+      tarefa_concluida,
+      id,
+    ]);
     if (resp.affectedRows > 0) {
-      res.json({ mensagem: "Livro atualizado com sucesso" });
+      res.json({ mensagem: "Tarefa atualizada com sucesso" });
     } else {
-      res.status(404).json({ erro: "Livro não encontrado" });
+      res.status(404).json({ erro: "Tarefa não encontrada" });
     }
   } catch (err) {
     console.log(err);
@@ -74,18 +136,19 @@ app.put("/livro/:id", async (req, res) => {
   }
 });
 
-app.delete("/livro/:id", async (req, res) => {
+// DELETE - Deletar tarefa por ID
+app.delete("/tarefa/:id", async (req, res) => {
   const id = Number(req.params.id);
 
   try {
-    const sql = "DELETE FROM livro WHERE id_livro = ?";
+    const sql = "DELETE FROM tarefas WHERE id_tarefa = ?";
     const resp = await conexao.query(sql, [id]);
 
     if (resp.affectedRows === 0) {
       return res.status(404).json({ erro: "O ID inserido não existe" });
     }
 
-    res.status(200).json({ mensagem: "Livro deletado com sucesso!" });
+    res.status(200).json({ mensagem: "Tarefa deletada com sucesso!" });
   } catch (err) {
     console.log(err);
     res.status(500).json({ erro: "Erro interno no servidor ao deletar" });
